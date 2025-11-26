@@ -3,14 +3,39 @@
 set -euo pipefail
 
 PLANT_BARCODE_DIR=${1:-"plant_barcodes"}
-INSECT_FASTQ_DIR=${2:-"plant_genes_Nov25/data"}
-OUTPUT_DIR=${3:-"results"}
+DATASET_ARG=${2:-"plant_genes_Nov25"}
+DATASET_ARG=${DATASET_ARG%/}
 
 THREADS=${THREADS:-32}
 EVALUE=${EVALUE:-1e-3}
 FASTQ_SUFFIX=${FASTQ_SUFFIX:-"_R1_R2.fastq.gz"}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scripts"
+
+if [[ -d "$DATASET_ARG" && -d "$DATASET_ARG/data" ]]; then
+    DATASET_ROOT="$DATASET_ARG"
+    INSECT_FASTQ_DIR="$DATASET_ARG/data"
+elif [[ -d "$DATASET_ARG" ]]; then
+    INSECT_FASTQ_DIR="$DATASET_ARG"
+    if [[ "$DATASET_ARG" == */data ]]; then
+        DATASET_ROOT="${DATASET_ARG%/data}"
+    else
+        DATASET_ROOT="$DATASET_ARG"
+    fi
+else
+    echo "Insect dataset directory not found: $DATASET_ARG"
+    exit 1
+fi
+
+if [[ -n "${3:-}" ]]; then
+    if [[ "$3" = /* ]]; then
+        OUTPUT_DIR="$3"
+    else
+        OUTPUT_DIR="$DATASET_ROOT/$3"
+    fi
+else
+    OUTPUT_DIR="$DATASET_ROOT/results"
+fi
 
 required_bins=(python3 blastn makeblastdb)
 for bin in "${required_bins[@]}"; do
@@ -29,6 +54,9 @@ if [[ ! -d "$INSECT_FASTQ_DIR" ]]; then
     echo "Insect FASTQ directory not found: $INSECT_FASTQ_DIR"
     exit 1
 fi
+
+echo "==> Dataset root: $DATASET_ROOT"
+echo "==> FASTQ source: $INSECT_FASTQ_DIR"
 
 FASTAS_DIR="$OUTPUT_DIR/fastas"
 BLASTDB_DIR="$OUTPUT_DIR/blastdbs"
@@ -108,6 +136,9 @@ python3 "$SCRIPT_DIR/collect_unique_hits.py" \
     --blast-tsv "$BLAST_DIR/rbcL_all.tsv" \
     --unique-fasta "$UNIQUE_DIR/rbcL_unique_hits.fasta" \
     --unique-table "$UNIQUE_DIR/rbcL_unique_hits.tsv"
+
+echo "==> Cleaning up intermediate FASTA files and BLAST databases"
+rm -rf "$FASTAS_DIR" "$BLASTDB_DIR"
 
 cat <<EOF
 Pipeline complete.

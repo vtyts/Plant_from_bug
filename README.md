@@ -28,11 +28,21 @@ GenBank `nt`.
 export THREADS=32
 export EVALUE=1e-3
 
-bash run_pipeline.sh \
-  plant_barcodes \
-  plant_genes_Nov25/data \
-  results
+# Analyses stay inside each dataset directory (e.g. plant_genes_Nov25/results)
+bash run_pipeline.sh plant_barcodes plant_genes_Nov25
+
+# For a different batch (e.g. December genomes)
+bash run_pipeline.sh plant_barcodes plant_genes_Dec25
 ```
+
+Notes:
+
+- Pass the dataset root (`plant_genes_Nov25`). The script looks for `data/`
+  inside that directory; if you instead provide the `data/` path directly, it is
+  detected automatically.
+- Outputs land in `<dataset>/results` by default. Provide a third argument (e.g.
+  `analysis_run2`) to place them in `<dataset>/analysis_run2`. Absolute paths
+  are honored as-is.
 
 What happens:
 
@@ -42,11 +52,13 @@ What happens:
 4. `blastn` (e-value 1e-3, multithreaded) runs matK/rbcL queries against every sample
 5. BLAST results are combined per gene and deduplicated into unique hits
 
-Key outputs:
+Key outputs (relative to each dataset directory):
 
 - `results/blast/`: raw BLAST tables per sample and combined `*_all.tsv`
 - `results/unique/matK_unique_hits.fasta` / `rbcL_unique_hits.fasta`: deduplicated hit sequences
 - `results/unique/*.tsv`: metadata for each unique hit (pident, bitscore, etc.)
+- Intermediates (`results/fastas`, `results/blastdbs`) are deleted automatically
+  at the end of each run to save space—rerunning the pipeline regenerates them.
 
 ## Identifying Plant Taxa via GenBank nt
 
