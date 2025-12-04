@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 module load ncbi-blast/2.16.0+
-module load seqtk
 
 if [[ $# -lt 2 ]]; then
     echo "Usage: $0 <unique_hits_fasta> <output_prefix>"
