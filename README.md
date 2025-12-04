@@ -31,7 +31,12 @@ export THREADS=32
 export EVALUE=1e-3
 # optional: Slurm/resource tuning
 export GENOME_BATCH_SIZE=10        # max concurrent insect genomes
-export BLAST_THREADS=4             # threads per BLAST task
+export BLAST_THREADS=3             # threads per BLAST task
+module load ncbi-blast/2.16.0+       # if not already in your shell startup
+export PLANT_BARCODE_DIR=plant_barcodes   # optional, defaults already set
+export SLURM_ACCOUNT=my_account          # your allocation name
+export SLURM_MEM_PER_CPU=10G              # whatever per-core memory you need
+# (you can mix in other options, e.g. SLURM_PARTITION, SLURM_TIME, etc.)
 # export SLURM_PARTITION=general   # uncomment to target a partition
 
 # Analyses stay inside each dataset directory (e.g. plant_genes_Nov25/results)
