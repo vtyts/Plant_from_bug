@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Main pipeline to extract plant barcode sequences from insect Illumina data.
 set -euo pipefail
+module load ncbi-blast/2.16.0+
 
 PLANT_BARCODE_DIR=${1:-"plant_barcodes"}
 DATASET_ARG=${2:-"plant_genes_Nov25"}
