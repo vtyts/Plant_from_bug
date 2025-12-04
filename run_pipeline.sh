@@ -10,6 +10,7 @@ DATASET_ARG=${DATASET_ARG%/}
 THREADS=${THREADS:-32}
 EVALUE=${EVALUE:-1e-3}
 FASTQ_SUFFIX=${FASTQ_SUFFIX:-"_R1_R2.fastq.gz"}
+FASTQ_BATCH_SIZE=${FASTQ_BATCH_SIZE:-10}
 GENOME_BATCH_SIZE=${GENOME_BATCH_SIZE:-10}
 SLURM_WAIT_POLL=${SLURM_WAIT_POLL:-30}
 
@@ -100,34 +101,30 @@ FASTAS_DIR="$OUTPUT_DIR/fastas"
 BLASTDB_DIR="$OUTPUT_DIR/blastdbs"
 BLAST_DIR="$OUTPUT_DIR/blast"
 UNIQUE_DIR="$OUTPUT_DIR/unique"
+MANIFEST_DIR="$OUTPUT_DIR/manifests"
 
-mkdir -p "$FASTAS_DIR" "$BLASTDB_DIR" "$BLAST_DIR/matK" "$BLAST_DIR/rbcL" "$UNIQUE_DIR"
+mkdir -p "$FASTAS_DIR" "$BLASTDB_DIR" "$BLAST_DIR/matK" "$BLAST_DIR/rbcL" "$UNIQUE_DIR" "$MANIFEST_DIR"
 
-echo "==> Converting FASTQ libraries to FASTA"
-python3 "$SCRIPT_DIR/prepare_fastas.py" \
-    --input "$INSECT_FASTQ_DIR" \
-    --output "$FASTAS_DIR" \
-    --suffix "$FASTQ_SUFFIX"
+FASTQ_MANIFEST="$MANIFEST_DIR/fastq_inputs.tsv"
+: >"$FASTQ_MANIFEST"
 
 shopt -s nullglob
-FASTAS=("$FASTAS_DIR"/*.fasta)
+FASTQ_FILES=("$INSECT_FASTQ_DIR"/*"$FASTQ_SUFFIX")
 shopt -u nullglob
-if [[ ${#FASTAS[@]} -eq 0 ]]; then
-    echo "No FASTA files produced in $FASTAS_DIR"
+if [[ ${#FASTQ_FILES[@]} -eq 0 ]]; then
+    echo "No FASTQ files ending with '$FASTQ_SUFFIX' found in $INSECT_FASTQ_DIR"
     exit 1
 fi
 
-MANIFEST_DIR="$OUTPUT_DIR/manifests"
-MANIFEST_FILE="$MANIFEST_DIR/insect_fastas.tsv"
-mkdir -p "$MANIFEST_DIR"
-: >"$MANIFEST_FILE"
-for fasta in "${FASTAS[@]}"; do
-    sample=$(basename "$fasta" .fasta)
-    printf "%s\t%s\n" "$sample" "$fasta" >>"$MANIFEST_FILE"
+for fastq in "${FASTQ_FILES[@]}"; do
+    sample=$(basename "$fastq")
+    sample=${sample%"$FASTQ_SUFFIX"}
+    fasta_path="$FASTAS_DIR/${sample}.fasta"
+    printf "%s\t%s\t%s\n" "$sample" "$(abs_path "$fastq")" "$fasta_path" >>"$FASTQ_MANIFEST"
 done
-MANIFEST_FILE=$(abs_path "$MANIFEST_FILE")
-TOTAL_SAMPLES=${#FASTAS[@]}
-echo "==> Prepared manifest for $TOTAL_SAMPLES FASTA libraries"
+FASTQ_MANIFEST=$(abs_path "$FASTQ_MANIFEST")
+TOTAL_FASTQ=${#FASTQ_FILES[@]}
+echo "==> Prepared FASTQ manifest for $TOTAL_FASTQ libraries"
 
 combine_barcodes() {
     local gene=$1
@@ -182,6 +179,43 @@ wait_for_job() {
     fi
 }
 
+submit_fastq_conversion() {
+    local manifest=$1
+    local total_tasks=$2
+    if (( total_tasks == 0 )); then
+        echo "No FASTQ entries to convert."
+        return
+    fi
+
+    local array_spec="0-$((total_tasks - 1))"
+    local concurrency_note="$FASTQ_BATCH_SIZE"
+    if (( FASTQ_BATCH_SIZE > 0 )); then
+        array_spec="${array_spec}%${FASTQ_BATCH_SIZE}"
+    else
+        concurrency_note="unlimited"
+    fi
+
+    local log_dir
+    log_dir=$(abs_path "$FASTAS_DIR/slurm_fastq")
+    mkdir -p "$log_dir"
+
+    local sbatch_cmd=(sbatch --parsable --export=ALL --array="$array_spec" --job-name "fastq2fa" --output "$log_dir/slurm-%A_%a.out")
+    if [[ ${#SBATCH_EXTRA_ARGS[@]} -gt 0 ]]; then
+        sbatch_cmd+=("${SBATCH_EXTRA_ARGS[@]}")
+    fi
+    sbatch_cmd+=("$SCRIPT_DIR/slurm_fastq_to_fasta.sh" "$manifest" "$SCRIPT_DIR/prepare_fastas.py")
+
+    echo "==> Launching Slurm array for FASTQ -> FASTA (${total_tasks} libraries; max ${concurrency_note} concurrent)"
+    local job_id
+    job_id=$("${sbatch_cmd[@]}") || {
+        echo "Failed to submit Slurm job for FASTQ conversion"
+        exit 1
+    }
+    echo "==> Slurm job ${job_id} submitted for FASTQ conversion"
+    wait_for_job "$job_id"
+    echo "==> FASTQ conversion job ${job_id} completed"
+}
+
 submit_blast_array() {
     local gene=$1
     local query_abs
@@ -234,6 +268,26 @@ submit_blast_array() {
     cat "${tsv_files[@]}" >"$BLAST_DIR/${gene}_all.tsv"
     echo "==> Aggregated ${gene} hits -> $BLAST_DIR/${gene}_all.tsv"
 }
+
+submit_fastq_conversion "$FASTQ_MANIFEST" "$TOTAL_FASTQ"
+
+MANIFEST_FILE="$MANIFEST_DIR/insect_fastas.tsv"
+: >"$MANIFEST_FILE"
+while IFS=$'\t' read -r sample _ fasta_path; do
+    [[ -z "${sample:-}" ]] && continue
+    if [[ ! -f "$fasta_path" ]]; then
+        echo "Missing FASTA output for $sample at $fasta_path"
+        exit 1
+    fi
+    printf "%s\t%s\n" "$sample" "$fasta_path" >>"$MANIFEST_FILE"
+done <"$FASTQ_MANIFEST"
+MANIFEST_FILE=$(abs_path "$MANIFEST_FILE")
+TOTAL_SAMPLES=$(wc -l <"$MANIFEST_FILE" | tr -d ' ')
+if (( TOTAL_SAMPLES == 0 )); then
+    echo "No FASTA entries found in $MANIFEST_FILE"
+    exit 1
+fi
+echo "==> Prepared manifest for $TOTAL_SAMPLES FASTA libraries"
 
 submit_blast_array "matK"
 submit_blast_array "rbcL"

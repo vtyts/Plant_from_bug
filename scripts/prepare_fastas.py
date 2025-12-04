@@ -5,6 +5,9 @@ Stream-convert compressed FASTQ libraries into FASTA files.
 Each Illumina library is expected to be stored as "<sample>_R1_R2.fastq.gz".
 The script reads the file in chunks to avoid loading everything into memory
 and writes a FASTA file with the matching sample name.
+
+You can either convert an entire directory (default behavior) or a single
+FASTQ file by providing the `--fastq-file` / `--output-fasta` pair.
 """
 
 from __future__ import annotations
@@ -57,13 +60,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--input",
-        required=True,
         type=Path,
         help="Directory containing *_R1_R2.fastq.gz files.",
     )
     parser.add_argument(
         "--output",
-        required=True,
         type=Path,
         help="Destination directory for FASTA files.",
     )
@@ -77,11 +78,36 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Overwrite existing FASTA files instead of skipping them.",
     )
+    parser.add_argument(
+        "--fastq-file",
+        type=Path,
+        help="Convert this single FASTQ.gz file instead of scanning a directory.",
+    )
+    parser.add_argument(
+        "--output-fasta",
+        type=Path,
+        help="Destination FASTA path when using --fastq-file.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    single_mode = args.fastq_file is not None or args.output_fasta is not None
+    if single_mode:
+        if args.fastq_file is None or args.output_fasta is None:
+            raise SystemExit("--fastq-file and --output-fasta must be provided together.")
+        if not args.fastq_file.exists():
+            raise SystemExit(f"FASTQ file not found: {args.fastq_file}")
+        convert_file(args.fastq_file, args.output_fasta, args.force)
+        return
+
+    if args.input is None or args.output is None:
+        raise SystemExit(
+            "Provide --input/--output for directory conversion or "
+            "--fastq-file/--output-fasta for single-file conversion."
+        )
+
     if not args.input.is_dir():
         raise SystemExit(f"Input directory not found: {args.input}")
 

@@ -15,6 +15,7 @@ GenBank `nt`.
 - `scripts/collect_unique_hits.py`: collapses BLAST output to unique hits
 - `scripts/blast_nt_hits.sh`: helper to BLAST unique hits against GenBank `nt`
 - `scripts/slurm_blast_task.sh`: Slurm array worker for per-sample BLAST jobs
+- `scripts/slurm_fastq_to_fasta.sh`: Slurm array worker for FASTQ to FASTA conversion
 
 ## Dependencies
 
@@ -31,6 +32,7 @@ module load ncbi-blast/2.16.0+       # if not already in your shell startup
 export THREADS=32
 export EVALUE=1e-3
 # optional: Slurm/resource tuning
+export FASTQ_BATCH_SIZE=10          # max concurrent FASTQ->FASTA jobs
 export GENOME_BATCH_SIZE=10        # max concurrent insect genomes
 export BLAST_THREADS=3             # threads per BLAST task
 export SLURM_ACCOUNT=my_account          # your allocation name
@@ -53,12 +55,13 @@ Notes:
 - Outputs land in `<dataset>/results` by default. Provide a third argument (e.g.
   `analysis_run2`) to place them in `<dataset>/analysis_run2`. Absolute paths
   are honored as-is.
-- `run_pipeline.sh` submits Slurm job arrays for the BLAST stage; run it from a
+- `run_pipeline.sh` submits Slurm job arrays for both the FASTQ conversion and BLAST stages; run it from a
   login/submit node with access to your shared filesystem.
 
 What happens:
 
 1. `*_R1_R2.fastq.gz` libraries are streamed into `results/fastas/*.fasta`
+   through a Slurm array (10 concurrent conversions by default)
 2. All matK and rbcL barcode references are concatenated per gene
 3. Each FASTA becomes its own `makeblastdb` target
 4. Slurm job arrays process the FASTA manifest ~10 samples at a time (tunable)
@@ -74,9 +77,14 @@ Key outputs (relative to each dataset directory):
   at the end of each run to save space—rerunning the pipeline regenerates them.
 - Slurm stdout/stderr for each BLAST task lands in
   `results/blast/<gene>/slurm-<job>_<task>.out`.
+- Slurm stdout/stderr for each FASTQ conversion task lands in
+  `results/fastas/slurm_fastq/slurm-<job>_<task>.out`.
+- Manifests in `results/manifests/` track FASTQ inputs and FASTA outputs used by the arrays.
 
 ### Slurm scheduling details
 
+- `FASTQ_BATCH_SIZE` (default `10`) controls how many FASTQ conversion jobs run
+  simultaneously. Set to `0` or a negative value to allow unlimited concurrency.
 - `GENOME_BATCH_SIZE` (default `10`) caps how many insect genomes run
   simultaneously. Set to `0` or a negative value to allow unlimited concurrency.
 - `BLAST_THREADS` (or `THREADS`) controls the per-task `blastn -num_threads`.
