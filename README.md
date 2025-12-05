@@ -73,6 +73,8 @@ Key outputs (relative to each dataset directory):
 - `results/blast/`: raw BLAST tables per sample and combined `*_all.tsv`
 - `results/unique/matK_unique_hits.fasta` / `rbcL_unique_hits.fasta`: deduplicated hit sequences
 - `results/unique/*.tsv`: metadata for each unique hit (pident, bitscore, etc.)
+- `results/unique/by_sample/<gene>/*_{gene}_unique_hits.(fasta|tsv)`: per-insect unique hits,
+  preserving which genome each matK/rbcL hit originated from
 - Intermediates (`results/fastas`, `results/blastdbs`) are deleted automatically
   at the end of each run to save space—rerunning the pipeline regenerates them.
 - Slurm stdout/stderr for each BLAST task lands in

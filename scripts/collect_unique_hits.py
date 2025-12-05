@@ -53,6 +53,11 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Output TSV path describing each unique hit.",
     )
+    parser.add_argument(
+        "--allow-empty",
+        action="store_true",
+        help="Permit BLAST inputs with zero hits and emit empty outputs instead of exiting.",
+    )
     return parser.parse_args()
 
 
@@ -114,6 +119,14 @@ def main() -> None:
 
     hits = load_hits(args.blast_tsv)
     if not hits:
+        if args.allow_empty:
+            write_fasta({}, args.unique_fasta)
+            write_table({}, args.unique_table)
+            print(
+                f"[warn] No hits found in {args.blast_tsv}. "
+                f"Emitted empty outputs ({args.unique_fasta}, {args.unique_table})"
+            )
+            return
         raise SystemExit(f"No hits found in {args.blast_tsv}.")
 
     unique_hits = select_unique_hits(hits)

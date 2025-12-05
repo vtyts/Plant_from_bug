@@ -269,6 +269,46 @@ submit_blast_array() {
     echo "==> Aggregated ${gene} hits -> $BLAST_DIR/${gene}_all.tsv"
 }
 
+derive_combined_unique_hits() {
+    local gene=$1
+    echo "==> Deriving combined ${gene} unique hits"
+    python3 "$SCRIPT_DIR/collect_unique_hits.py" \
+        --blast-tsv "$BLAST_DIR/${gene}_all.tsv" \
+        --unique-fasta "$UNIQUE_DIR/${gene}_unique_hits.fasta" \
+        --unique-table "$UNIQUE_DIR/${gene}_unique_hits.tsv"
+}
+
+derive_per_sample_unique_hits() {
+    local gene=$1
+    local gene_blast_dir="$BLAST_DIR/$gene"
+    local sample_out_dir="$UNIQUE_DIR/by_sample/$gene"
+
+    mkdir -p "$sample_out_dir"
+
+    shopt -s nullglob
+    local sample_files=("$gene_blast_dir"/*.tsv)
+    shopt -u nullglob
+
+    if [[ ${#sample_files[@]} -eq 0 ]]; then
+        echo "No per-sample BLAST TSV files found for ${gene} in $gene_blast_dir"
+        exit 1
+    fi
+
+    local processed=0
+    for tsv in "${sample_files[@]}"; do
+        local sample
+        sample=$(basename "$tsv")
+        sample=${sample%.tsv}
+        python3 "$SCRIPT_DIR/collect_unique_hits.py" \
+            --blast-tsv "$tsv" \
+            --unique-fasta "$sample_out_dir/${sample}_${gene}_unique_hits.fasta" \
+            --unique-table "$sample_out_dir/${sample}_${gene}_unique_hits.tsv" \
+            --allow-empty
+        ((processed++))
+    done
+    echo "==> Derived per-sample ${gene} unique hits (${processed} samples) -> $sample_out_dir"
+}
+
 submit_fastq_conversion "$FASTQ_MANIFEST" "$TOTAL_FASTQ"
 
 MANIFEST_FILE="$MANIFEST_DIR/insect_fastas.tsv"
@@ -293,15 +333,10 @@ submit_blast_array "matK"
 submit_blast_array "rbcL"
 
 echo "==> Deriving unique hits"
-python3 "$SCRIPT_DIR/collect_unique_hits.py" \
-    --blast-tsv "$BLAST_DIR/matK_all.tsv" \
-    --unique-fasta "$UNIQUE_DIR/matK_unique_hits.fasta" \
-    --unique-table "$UNIQUE_DIR/matK_unique_hits.tsv"
-
-python3 "$SCRIPT_DIR/collect_unique_hits.py" \
-    --blast-tsv "$BLAST_DIR/rbcL_all.tsv" \
-    --unique-fasta "$UNIQUE_DIR/rbcL_unique_hits.fasta" \
-    --unique-table "$UNIQUE_DIR/rbcL_unique_hits.tsv"
+derive_combined_unique_hits "matK"
+derive_combined_unique_hits "rbcL"
+derive_per_sample_unique_hits "matK"
+derive_per_sample_unique_hits "rbcL"
 
 echo "==> Cleaning up intermediate FASTA files and BLAST databases"
 rm -rf "$FASTAS_DIR" "$BLASTDB_DIR"
@@ -310,6 +345,8 @@ cat <<EOF
 Pipeline complete.
 - Unique matK hits: $UNIQUE_DIR/matK_unique_hits.fasta
 - Unique rbcL hits: $UNIQUE_DIR/rbcL_unique_hits.fasta
+- Per-sample matK hits: $UNIQUE_DIR/by_sample/matK
+- Per-sample rbcL hits: $UNIQUE_DIR/by_sample/rbcL
 
 To identify plant taxa via GenBank nt, run for each file:
   export NCBI_EMAIL="you@example.com"
