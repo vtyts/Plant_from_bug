@@ -104,7 +104,7 @@ Remote BLAST requires an email (and benefits from an NCBI API key).
 ```bash
 export NCBI_EMAIL="you@example.com"
 # optional
-export NCBI_API_KEY="XXXX"
+#export NCBI_API_KEY="XXXX"
 
 ./scripts/blast_nt_hits.sh results/unique/matK_unique_hits.fasta results/nt/matK_vs_nt
 ./scripts/blast_nt_hits.sh results/unique/rbcL_unique_hits.fasta results/nt/rbcL_vs_nt
