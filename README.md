@@ -35,7 +35,6 @@ export EVALUE=1e-3
 export FASTQ_BATCH_SIZE=10          # max concurrent FASTQ->FASTA jobs
 export GENOME_BATCH_SIZE=10        # max concurrent insect genomes
 export BLAST_THREADS=3             # threads per BLAST task
-export SLURM_ACCOUNT=my_account          # your allocation name
 export SLURM_MEM_PER_CPU=10G              # whatever per-core memory you need
 # (you can mix in other options, e.g. SLURM_PARTITION, SLURM_TIME, etc.)
 # export SLURM_PARTITION=general   # uncomment to target a partition
@@ -92,7 +91,7 @@ Key outputs (relative to each dataset directory):
 - `BLAST_THREADS` (or `THREADS`) controls the per-task `blastn -num_threads`.
   Ensure `GENOME_BATCH_SIZE * BLAST_THREADS` fits within your allocation.
 - Optional environment variables forwarded to `sbatch`:
-  `SLURM_PARTITION`, `SLURM_ACCOUNT`, `SLURM_TIME`, `SLURM_MEM_PER_CPU`,
+  `SLURM_PARTITION`, `SLURM_TIME`, `SLURM_MEM_PER_CPU`,
   `SLURM_CPUS_PER_TASK`, `SLURM_QOS`, plus any extra flags via
   `SLURM_SBATCH_OPTS` (space-separated string).
 - `SLURM_WAIT_POLL` (seconds, default `30`) sets how often the pipeline polls
