@@ -29,9 +29,6 @@ declare -a SBATCH_EXTRA_ARGS=()
 if [[ -n "${SLURM_PARTITION:-}" ]]; then
     SBATCH_EXTRA_ARGS+=("--partition" "$SLURM_PARTITION")
 fi
-if [[ -n "${SLURM_ACCOUNT:-}" ]]; then
-    SBATCH_EXTRA_ARGS+=("--account" "$SLURM_ACCOUNT")
-fi
 if [[ -n "${SLURM_TIME:-}" ]]; then
     SBATCH_EXTRA_ARGS+=("--time" "$SLURM_TIME")
 fi
