@@ -65,15 +65,14 @@ What happens:
 3. Each FASTA becomes its own `makeblastdb` target
 4. Slurm job arrays process the FASTA manifest ~10 samples at a time (tunable)
    and run `blastn` (default e-value `1e-3`) for matK/rbcL queries
-5. BLAST results are combined per gene and deduplicated into unique hits
+5. BLAST results are deduplicated per insect genome for each gene, yielding per-sample unique hit tables/FASTAs
 
 Key outputs (relative to each dataset directory):
 
 - `results/blast/`: raw BLAST tables per sample and combined `*_all.tsv`
-- `results/unique/matK_unique_hits.fasta` / `rbcL_unique_hits.fasta`: deduplicated hit sequences
-- `results/unique/*.tsv`: metadata for each unique hit (pident, bitscore, etc.)
 - `results/unique/by_sample/<gene>/*_{gene}_unique_hits.(fasta|tsv)`: per-insect unique hits,
-  preserving which genome each matK/rbcL hit originated from
+  preserving which genome each matK/rbcL hit originated from. These are the primary
+  inputs for downstream analyses (no repository-level combined unique files are produced).
 - Intermediates (`results/fastas`, `results/blastdbs`) are deleted automatically
   at the end of each run to save space—rerunning the pipeline regenerates them.
 - Slurm stdout/stderr for each BLAST task lands in
@@ -108,13 +107,15 @@ export NCBI_EMAIL="you@example.com"
 # optional
 export NCBI_API_KEY="XXXX"
 
-./scripts/blast_nt_hits.sh results/unique/matK_unique_hits.fasta results/nt/matK_vs_nt
-./scripts/blast_nt_hits.sh results/unique/rbcL_unique_hits.fasta results/nt/rbcL_vs_nt
+# Run this per insect sample after selecting the desired FASTA:
+./scripts/blast_nt_hits.sh results/unique/by_sample/matK/<sample>_matK_unique_hits.fasta results/nt/matK_vs_nt
+./scripts/blast_nt_hits.sh results/unique/by_sample/rbcL/<sample>_rbcL_unique_hits.fasta results/nt/rbcL_vs_nt
 ```
 
 Outputs are tab-delimited tables enriched with taxonomy columns (`staxids`,
 `sscinames`, `sskingdoms`, `stitle`). Adjust `MAX_TARGET_SEQS` or `TAX_FILTER`
-(defaults to `Viridiplantae[ORGN]`) through environment variables if needed.
+(defaults to `Viridiplantae[ORGN]`) through environment variables if needed. Iterate over
+the per-sample FASTA outputs if you want to BLAST every insect genome.
 
 ## Customization Tips
 

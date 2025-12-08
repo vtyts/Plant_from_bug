@@ -4,7 +4,7 @@ module load ncbi-blast/2.16.0+
 
 if [[ $# -lt 2 ]]; then
     echo "Usage: $0 <unique_hits_fasta> <output_prefix>"
-    echo "Example: $0 results/unique/matK_unique_hits.fasta results/nt/matK_vs_nt"
+    echo "Example: $0 results/unique/by_sample/matK/Bug123_matK_unique_hits.fasta results/nt/matK_Bug123_vs_nt"
     exit 1
 fi
 

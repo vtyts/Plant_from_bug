@@ -266,15 +266,6 @@ submit_blast_array() {
     echo "==> Aggregated ${gene} hits -> $BLAST_DIR/${gene}_all.tsv"
 }
 
-derive_combined_unique_hits() {
-    local gene=$1
-    echo "==> Deriving combined ${gene} unique hits"
-    python3 "$SCRIPT_DIR/collect_unique_hits.py" \
-        --blast-tsv "$BLAST_DIR/${gene}_all.tsv" \
-        --unique-fasta "$UNIQUE_DIR/${gene}_unique_hits.fasta" \
-        --unique-table "$UNIQUE_DIR/${gene}_unique_hits.tsv"
-}
-
 derive_per_sample_unique_hits() {
     local gene=$1
     local gene_blast_dir="$BLAST_DIR/$gene"
@@ -329,9 +320,7 @@ echo "==> Prepared manifest for $TOTAL_SAMPLES FASTA libraries"
 submit_blast_array "matK"
 submit_blast_array "rbcL"
 
-echo "==> Deriving unique hits"
-derive_combined_unique_hits "matK"
-derive_combined_unique_hits "rbcL"
+echo "==> Deriving per-sample unique hits"
 derive_per_sample_unique_hits "matK"
 derive_per_sample_unique_hits "rbcL"
 
@@ -340,12 +329,10 @@ rm -rf "$FASTAS_DIR" "$BLASTDB_DIR"
 
 cat <<EOF
 Pipeline complete.
-- Unique matK hits: $UNIQUE_DIR/matK_unique_hits.fasta
-- Unique rbcL hits: $UNIQUE_DIR/rbcL_unique_hits.fasta
 - Per-sample matK hits: $UNIQUE_DIR/by_sample/matK
 - Per-sample rbcL hits: $UNIQUE_DIR/by_sample/rbcL
 
 To identify plant taxa via GenBank nt, run for each file:
   export NCBI_EMAIL="you@example.com"
-  ./scripts/blast_nt_hits.sh results/unique/matK_unique_hits.fasta results/nt/matK_vs_nt
+  ./scripts/blast_nt_hits.sh results/unique/by_sample/matK/<sample>_matK_unique_hits.fasta results/nt/matK_vs_nt
 EOF
