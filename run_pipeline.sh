@@ -254,16 +254,6 @@ submit_blast_array() {
     wait_for_job "$job_id"
     echo "==> Slurm job ${job_id} completed for ${gene}"
 
-    shopt -s nullglob
-    local tsv_files=("$outdir_abs"/*.tsv)
-    shopt -u nullglob
-    if [[ ${#tsv_files[@]} -eq 0 ]]; then
-        echo "No BLAST TSV files created in $outdir_abs for ${gene}"
-        exit 1
-    fi
-
-    cat "${tsv_files[@]}" >"$BLAST_DIR/${gene}_all.tsv"
-    echo "==> Aggregated ${gene} hits -> $BLAST_DIR/${gene}_all.tsv"
 }
 
 derive_per_sample_unique_hits() {
@@ -287,14 +277,17 @@ derive_per_sample_unique_hits() {
         local sample
         sample=$(basename "$tsv")
         sample=${sample%.tsv}
+        if [[ ! -s "$tsv" ]]; then
+            echo "[skip] ${gene} BLAST output for ${sample} has no hits; skipping."
+            continue
+        fi
         python3 "$SCRIPT_DIR/collect_unique_hits.py" \
             --blast-tsv "$tsv" \
             --unique-fasta "$sample_out_dir/${sample}_${gene}_unique_hits.fasta" \
-            --unique-table "$sample_out_dir/${sample}_${gene}_unique_hits.tsv" \
-            --allow-empty
+            --unique-table "$sample_out_dir/${sample}_${gene}_unique_hits.tsv"
         ((processed++))
     done
-    echo "==> Derived per-sample ${gene} unique hits (${processed} samples) -> $sample_out_dir"
+    echo "==> Deduplicated per-sample ${gene} hits (${processed} samples) -> $sample_out_dir"
 }
 
 submit_fastq_conversion "$FASTQ_MANIFEST" "$TOTAL_FASTQ"

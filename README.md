@@ -12,7 +12,8 @@ GenBank `nt`.
 - `plant_genes_Nov25/data/`: place insect metagenomes (`*_R1_R2.fastq.gz`)
 - `run_pipeline.sh`: orchestrates the workflow end-to-end
 - `scripts/prepare_fastas.py`: converts compressed FASTQ libraries to FASTA
-- `scripts/collect_unique_hits.py`: collapses BLAST output to unique hits
+- `scripts/collect_unique_hits.py`: filters BLAST output to per-subject unique hits
+  (longest alignment wins) and emits updated TSV/FASTA files
 - `scripts/blast_nt_hits.sh`: helper to BLAST unique hits against GenBank `nt`
 - `scripts/slurm_blast_task.sh`: Slurm array worker for per-sample BLAST jobs
 - `scripts/slurm_fastq_to_fasta.sh`: Slurm array worker for FASTQ to FASTA conversion
@@ -65,12 +66,12 @@ What happens:
 3. Each FASTA becomes its own `makeblastdb` target
 4. Slurm job arrays process the FASTA manifest ~10 samples at a time (tunable)
    and run `blastn` (default e-value `1e-3`) for matK/rbcL queries
-5. BLAST results are deduplicated per insect genome for each gene, yielding per-sample unique hit tables/FASTAs
+5. BLAST results stay per-sample (no combined tables) and are deduplicated per gene using the subject ID (`sseqid`). When multiple hits share a subject, the longest alignment (then higher bitscore/lower e-value) is retained, yielding per-sample unique hit tables/FASTAs.
 
 Key outputs (relative to each dataset directory):
 
-- `results/blast/`: raw BLAST tables per sample and combined `*_all.tsv`
-- `results/unique/by_sample/<gene>/*_{gene}_unique_hits.(fasta|tsv)`: per-insect unique hits,
+- `results/blast/`: raw BLAST tables per sample (one file per insect genome)
+- `results/unique/by_sample/<gene>/*_{gene}_unique_hits.(fasta|tsv)`: per-insect unique hits with duplicates (same `sseqid`) removed by keeping the longest alignment,
   preserving which genome each matK/rbcL hit originated from. These are the primary
   inputs for downstream analyses (no repository-level combined unique files are produced).
 - Intermediates (`results/fastas`, `results/blastdbs`) are deleted automatically
