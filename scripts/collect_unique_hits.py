@@ -12,7 +12,7 @@ import argparse
 import csv
 from pathlib import Path
 from textwrap import wrap
-from typing import Dict, List
+from typing import Dict, List, Sequence
 
 BLAST_COLUMNS = [
     "qseqid",
@@ -72,39 +72,66 @@ def load_hits(blast_tsv: Path) -> List[Dict[str, str]]:
     return hits
 
 
-def select_unique_hits(hits: List[Dict[str, str]]) -> Dict[str, Dict[str, str]]:
-    """Return a mapping of sequence -> best hit metadata (highest bitscore)."""
+def should_replace(existing: Dict[str, str], candidate: Dict[str, str]) -> bool:
+    """Return True if candidate should replace existing for the same subject ID."""
+    exist_len = int(existing["length"])
+    cand_len = int(candidate["length"])
+    if cand_len > exist_len:
+        return True
+    if cand_len < exist_len:
+        return False
+
+    # Tie-break on bitscore (higher is better), then e-value (lower is better)
+    exist_bits = float(existing["bitscore"])
+    cand_bits = float(candidate["bitscore"])
+    if cand_bits > exist_bits:
+        return True
+    if cand_bits < exist_bits:
+        return False
+
+    exist_eval = float(existing["evalue"])
+    cand_eval = float(candidate["evalue"])
+    if cand_eval < exist_eval:
+        return True
+    if cand_eval > exist_eval:
+        return False
+
+    # Preserve the most recent candidate when all metrics are equal.
+    return True
+
+
+def select_unique_hits(hits: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    """Return the best hit per subject (sseqid), preferring the longest alignment."""
     unique: Dict[str, Dict[str, str]] = {}
     for hit in hits:
-        seq = hit["sseq"]
-        bitscore = float(hit["bitscore"])
-        current = unique.get(seq)
-        if current is None or bitscore > float(current["bitscore"]):
-            unique[seq] = hit
-    return unique
+        subject = hit["sseqid"]
+        current = unique.get(subject)
+        if current is None or should_replace(current, hit):
+            unique[subject] = hit
+    return list(unique.values())
 
 
-def write_fasta(records: Dict[str, Dict[str, str]], dest: Path) -> None:
+def write_fasta(records: Sequence[Dict[str, str]], dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     with dest.open("w") as fh:
-        for idx, (sequence, hit) in enumerate(records.items(), start=1):
+        for idx, hit in enumerate(records, start=1):
             header = (
                 f"hit{idx}|query:{hit['qseqid']}|subject:{hit['sseqid']}|"
                 f"pident:{hit['pident']}|bitscore:{hit['bitscore']}"
             )
             fh.write(f">{header}\n")
-            for chunk in wrap(sequence, width=80):
+            for chunk in wrap(hit["sseq"], width=80):
                 fh.write(f"{chunk}\n")
 
 
-def write_table(records: Dict[str, Dict[str, str]], dest: Path) -> None:
+def write_table(records: Sequence[Dict[str, str]], dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     with dest.open("w") as fh:
         writer = csv.writer(fh, delimiter="\t")
         writer.writerow(["unique_id", *BLAST_COLUMNS])
-        for idx, (sequence, hit) in enumerate(records.items(), start=1):
+        for idx, hit in enumerate(records, start=1):
             unique_id = f"hit{idx}"
-            writer.writerow([unique_id, *[hit[col] for col in BLAST_COLUMNS[:-1]], sequence])
+            writer.writerow([unique_id, *[hit[col] for col in BLAST_COLUMNS[:-1]], hit["sseq"]])
 
 
 def main() -> None:
@@ -114,9 +141,14 @@ def main() -> None:
 
     hits = load_hits(args.blast_tsv)
     if not hits:
-        raise SystemExit(f"No hits found in {args.blast_tsv}.")
+        print(f"[skip] No hits found in {args.blast_tsv}; skipping unique outputs.")
+        return
 
     unique_hits = select_unique_hits(hits)
+    if not unique_hits:
+        print(f"[skip] No unique hits found in {args.blast_tsv}; skipping unique outputs.")
+        return
+
     write_fasta(unique_hits, args.unique_fasta)
     write_table(unique_hits, args.unique_table)
     print(
