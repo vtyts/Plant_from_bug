@@ -49,6 +49,7 @@ bash run_pipeline.sh plant_barcodes plant_genes_Dec25
 
 Notes:
 
+- Fur reproducability, save a temp.txt file with the exported values to keep track of your settings.
 - Pass the dataset root (`plant_genes_Nov25`). The script looks for `data/`
   inside that directory; if you instead provide the `data/` path directly, it is
   detected automatically.
@@ -57,6 +58,7 @@ Notes:
   are honored as-is.
 - `run_pipeline.sh` submits Slurm job arrays for both the FASTQ conversion and BLAST stages; run it from a
   login/submit node with access to your shared filesystem.
+- BLASTN jobs can fail due to BLAST engine error: Database memory map file error. Check .out files in blast directory to detect those instances. In case of such an error, they would be 51 bytes instead of the usual 22 bytes. Usually, rerunning the specimen fixes an issue, but consider increasing memory before rerunning.
 
 What happens:
 
@@ -108,9 +110,10 @@ export NCBI_EMAIL="you@example.com"
 # optional
 export NCBI_API_KEY="XXXX"
 
-# Run this per insect sample after selecting the desired FASTA:
-./scripts/blast_nt_hits.sh results/unique/by_sample/matK/<sample>_matK_unique_hits.fasta results/nt/matK_vs_nt
-./scripts/blast_nt_hits.sh results/unique/by_sample/rbcL/<sample>_rbcL_unique_hits.fasta results/nt/rbcL_vs_nt
+# Run this per insect sample after selecting the desired FASTA in the folder of the analysis:
+cd plant_genes_Nov25
+bash ../scripts/blast_nt_hits.sh results/unique/by_sample/matK/<sample>_matK_unique_hits.fasta results/nt/<sample>_matK_vs_nt
+bash ../scripts/blast_nt_hits.sh results/unique/by_sample/matK/<sample>_rbcL_unique_hits.fasta results/nt/<sample>_rbcL_vs_nt
 ```
 
 Outputs are tab-delimited tables enriched with taxonomy columns (`staxids`,
