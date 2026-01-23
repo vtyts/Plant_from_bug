@@ -213,6 +213,23 @@ submit_fastq_conversion() {
     echo "==> FASTQ conversion job ${job_id} completed"
 }
 
+wait_for_blast_files() {
+    local gene=$1
+    local expected
+    expected=$(wc -l <"$MANIFEST_FILE")
+
+    local blast_dir="$BLAST_DIR/$gene"
+
+    echo "==> Waiting for ${expected} BLAST TSV files for ${gene}"
+
+    while true; do
+        local count
+        count=$(ls "$blast_dir"/*.tsv 2>/dev/null | wc -l)
+        (( count == expected )) && break
+        sleep 30
+    done
+}
+
 submit_blast_array() {
     local gene=$1
     local query_abs
@@ -251,7 +268,7 @@ submit_blast_array() {
         exit 1
     }
     echo "==> Slurm job ${job_id} submitted for ${gene}"
-    wait_for_job "$job_id"
+    wait_for_blast_files "$gene"
     echo "==> Slurm job ${job_id} completed for ${gene}"
 
 }
@@ -291,6 +308,7 @@ derive_per_sample_unique_hits() {
 }
 
 submit_fastq_conversion "$FASTQ_MANIFEST" "$TOTAL_FASTQ"
+sleep 30
 
 MANIFEST_FILE="$MANIFEST_DIR/insect_fastas.tsv"
 : >"$MANIFEST_FILE"
