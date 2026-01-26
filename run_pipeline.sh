@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Main pipeline to extract plant barcode sequences from insect Illumina data.
-set -euo pipefail
+set -xuo pipefail
 module load ncbi-blast/2.16.0+
 
 PLANT_BARCODE_DIR=${1:-"plant_barcodes"}
@@ -342,8 +342,6 @@ cat <<EOF
 Pipeline complete.
 - Per-sample matK hits: $UNIQUE_DIR/by_sample/matK
 - Per-sample rbcL hits: $UNIQUE_DIR/by_sample/rbcL
-
-Before proceeding, check blast log files to detect if any failed due to BLAST engine error: Database memory map file error.
 
 To identify plant taxa via GenBank nt, run for each file:
   export NCBI_EMAIL="you@example.com"
