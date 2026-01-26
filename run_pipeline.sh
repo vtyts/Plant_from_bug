@@ -343,6 +343,7 @@ Pipeline complete.
 - Per-sample matK hits: $UNIQUE_DIR/by_sample/matK
 - Per-sample rbcL hits: $UNIQUE_DIR/by_sample/rbcL
 
+Check if any BLASTN jobs failed before proceeding
 To identify plant taxa via GenBank nt, run for each file:
   export NCBI_EMAIL="you@example.com"
   ./scripts/blast_nt_hits.sh results/unique/by_sample/matK/<sample>_matK_unique_hits.fasta results/nt/matK_vs_nt
