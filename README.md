@@ -110,10 +110,11 @@ export NCBI_EMAIL="you@example.com"
 # optional
 export NCBI_API_KEY="XXXX"
 
-# Run this per insect sample after selecting the desired FASTA in the folder of the analysis:
-cd plant_genes_Nov25
-bash ../scripts/blast_nt_hits.sh results/unique/by_sample/matK/<sample>_matK_unique_hits.fasta results/nt/<sample>_matK_vs_nt
-bash ../scripts/blast_nt_hits.sh results/unique/by_sample/matK/<sample>_rbcL_unique_hits.fasta results/nt/<sample>_rbcL_vs_nt
+# Run this per insect sample after selecting the desired FASTA in the folder of the analysis.
+# The script allows for subsampling the specimens in the analysis folder based on the naming pattern
+# bash NCBI_search_run.sh PATTERN-FOR-SOME-PARTS GENE ANALYSIS_FOLDER
+# example:
+bash NCBI_search_run.sh 00- matK plant_genes_Nov25
 ```
 
 Outputs are tab-delimited tables enriched with taxonomy columns (`staxids`,
