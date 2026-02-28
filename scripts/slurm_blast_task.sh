@@ -44,6 +44,8 @@ if [[ ! -f "$FASTA_PATH" ]]; then
     exit 1
 fi
 
+echo "[start] ${GENE} vs ${SAMPLE}"
+
 mkdir -p "$BLAST_DIR" "$BLASTDB_DIR"
 
 DB_PREFIX="$BLASTDB_DIR/${SAMPLE}"
