@@ -2,7 +2,7 @@
 
 Pipeline for extracting plant barcodes (matK and rbcL) from insect Illumina
 metagenomes, collapsing unique hits, and identifying candidate host plants via
-GenBank `nt`.
+GenBank nt.
 
 ## Repository Layout
 
@@ -12,7 +12,7 @@ GenBank `nt`.
 - `plant_genes_Nov25/data/`: place insect metagenomes (`*_R1_R2.fastq.gz`)
 - `run_pipeline.sh`: orchestrates the workflow genome to hits
 - `NCBI_search_run.sh`: allows for in batch remote BLASTN submittions against GenBank nt
-   database for hit idetification
+   database for hit identification
 - `scripts/prepare_fastas.py`: converts compressed FASTQ libraries to FASTA
 - `scripts/collect_unique_hits.py`: filters BLAST output to per-subject unique hits
   (longest alignment wins) and emits updated TSV/FASTA files
