@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-module load ncbi-blast/2.16.0+
+module load ncbi-blast/2.17.0+
 
 if [[ $# -lt 5 ]]; then
     echo "Usage: $0 <manifest.tsv> <gene> <query_fasta> <blast_dir> <blastdb_dir>"
@@ -13,6 +13,7 @@ GENE=$2
 QUERY_FASTA=$3
 BLAST_DIR=$4
 BLASTDB_DIR=$5
+SKIP_DB=$6
 
 TASK_ID=${SLURM_ARRAY_TASK_ID:-${TASK_INDEX:-}}
 if [[ -z "$TASK_ID" ]]; then
@@ -46,20 +47,67 @@ fi
 
 echo "[start] ${GENE} vs ${SAMPLE}"
 
-mkdir -p "$BLAST_DIR" "$BLASTDB_DIR"
-
+mkdir -p "$BLAST_DIR"
 DB_PREFIX="$BLASTDB_DIR/${SAMPLE}"
-makeblastdb -in "$FASTA_PATH" -dbtype nucl -out "$DB_PREFIX" >/dev/null
 
-BLAST_THREADS=${BLAST_THREADS:-${THREADS:-32}}
+if (( $SKIP_DB == 0 )); then
+    mkdir -p "$BLASTDB_DIR"
+    makeblastdb -in "$FASTA_PATH" -dbtype nucl -out "$DB_PREFIX" #>/dev/null
+fi
+
+sleep 10
+
+echo "[db] makeblastdb finished"
+
+BLAST_THREADS=${BLAST_THREADS:-3}
 EVALUE=${EVALUE:-1e-3}
+MAX_RETRIES=${MAX_RETRIES:-2}
+RETRY_DELAY=${RETRY_DELAY:-300}
 
-blastn \
-    -query "$QUERY_FASTA" \
-    -db "$DB_PREFIX" \
-    -evalue "$EVALUE" \
-    -num_threads "$BLAST_THREADS" \
-    -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore sseq" \
-    -out "$BLAST_DIR/${SAMPLE}.tsv"
+OUT_FILE="$BLAST_DIR/${SAMPLE}.tsv"
+FAIL_FILE="${BLAST_DIR}/FAILED_BLASTS_${SAMPLE}.tab"
+
+ATTEMPT=1
+SUCCESS=0
+ 
+while [ $ATTEMPT -le $MAX_RETRIES ]
+
+do
+
+    echo "[blastn] BLAST attempt ${ATTEMPT} for ${GENE} vs ${SAMPLE}"
+
+    rm -f "${OUT_FILE}"
+
+    set +e
+    blastn \
+        -query "$QUERY_FASTA" \
+        -db "$DB_PREFIX" \
+        -evalue "$EVALUE" \
+        -num_threads "$BLAST_THREADS" \
+        -outfmt "6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore sseq" \
+        -out "$OUT_FILE"
+    status=$?
+    set -e
+
+    if [[ $status -eq 0 && -f "$OUT_FILE" ]]; then
+        SUCCESS=1
+        break
+    fi
+
+    echo "[warn] BLAST failed for ${SAMPLE} (exit code: $status)"
+
+    if [ $ATTEMPT -le $MAX_RETRIES ]; then
+        echo "Waiting ${RETRY_DELAY}s before retry..."
+        sleep $RETRY_DELAY
+    fi
+
+    ATTEMPT=$(($ATTEMPT + 1))
+done
+
+if [ $SUCCESS -eq 0 ] ; then
+    echo "[error] BLAST failed after ${MAX_RETRIES} attempts: ${GENE} vs ${SAMPLE}"
+    echo -e "${GENE}\t${SAMPLE}" > "$FAIL_FILE"
+    exit 0
+fi
 
 echo "[ok] ${GENE} vs ${SAMPLE}"

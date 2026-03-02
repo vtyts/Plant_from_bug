@@ -1,4 +1,17 @@
 #!/bin/bash
+LOG="NCBI_search_$(date +%Y%m%d_%H%M).log"
+START_TIME=$(date +%s)
+
+exec > >(awk -v start="$START_TIME" '
+{
+    now = systime()
+    elapsed = now - start
+    timestamp = strftime("%Y-%m-%d %H:%M:%S", now)
+    printf "[%s] [+%ds] %s\n", timestamp, elapsed, $0
+    fflush()
+}
+' | tee -a "$LOG") 2>&1
+
 CODE=$1
 MARK=$2
 DATE=$3

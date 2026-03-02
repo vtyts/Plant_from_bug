@@ -10,7 +10,9 @@ GenBank `nt`.
   - matK files must match `matK_*.fasta`
   - rbcL files must match `rbcL*.fasta`
 - `plant_genes_Nov25/data/`: place insect metagenomes (`*_R1_R2.fastq.gz`)
-- `run_pipeline.sh`: orchestrates the workflow end-to-end
+- `run_pipeline.sh`: orchestrates the workflow genome to hits
+- `NCBI_search_run.sh`: allows for in batch remote BLASTN submittions against GenBank nt
+   database for hit idetification
 - `scripts/prepare_fastas.py`: converts compressed FASTQ libraries to FASTA
 - `scripts/collect_unique_hits.py`: filters BLAST output to per-subject unique hits
   (longest alignment wins) and emits updated TSV/FASTA files
@@ -29,7 +31,7 @@ GenBank `nt`.
 
 ```bash
 # optional: customize threads/e-value
-module load ncbi-blast/2.16.0+       # if not already in your shell startup
+module load ncbi-blast/2.17.0+       # if not already in your shell startup
 export THREADS=32
 export EVALUE=1e-3
 # optional: Slurm/resource tuning
@@ -49,7 +51,7 @@ bash run_pipeline.sh plant_barcodes plant_genes_Dec25
 
 Notes:
 
-- Fur reproducability, save a temp.txt file with the exported values to keep track of your settings.
+- For reproducability, save a temp.txt file with the exported values to keep track of your settings.
 - Pass the dataset root (`plant_genes_Nov25`). The script looks for `data/`
   inside that directory; if you instead provide the `data/` path directly, it is
   detected automatically.
@@ -58,7 +60,10 @@ Notes:
   are honored as-is.
 - `run_pipeline.sh` submits Slurm job arrays for both the FASTQ conversion and BLAST stages; run it from a
   login/submit node with access to your shared filesystem.
-- BLASTN jobs can fail due to BLAST engine error: Database memory map file error. Check .out files in blast directory to detect those instances. In case of such an error, they would be 51 bytes instead of the usual 22 bytes. Usually, rerunning the specimen fixes an issue, but consider increasing memory before rerunning.
+- `NCBI_search_run.sh` submits remote BLASTN seraches against GenBank nt database for hit identification. Results land in `<dataset>/results/nt`
+- BLASTN jobs can fail due to BLAST engine error: Database memory map file error or due to connection
+  issues with GenBank. Failed runs are automatically rerun 2 times by deafault with a lag of 5 minutes
+  before the next attempt. The lag time and number of attemps can be adjusted. 
 
 What happens:
 
@@ -72,17 +77,19 @@ What happens:
 
 Key outputs (relative to each dataset directory):
 
+- logs (`run_pipeline_YMD_HM.log`, `NCBI_search_YMD_HM.log) `are automatically dated
+  and stored in the main repository folder
 - `results/blast/`: raw BLAST tables per sample (one file per insect genome)
 - `results/unique/by_sample/<gene>/*_{gene}_unique_hits.(fasta|tsv)`: per-insect unique hits with duplicates (same `sseqid`) removed by keeping the longest alignment,
   preserving which genome each matK/rbcL hit originated from. These are the primary
   inputs for downstream analyses (no repository-level combined unique files are produced).
-- Intermediates (`results/fastas`, `results/blastdbs`) are deleted automatically
-  at the end of each run to save space—rerunning the pipeline regenerates them.
+- Intermediates (`results/fastas`, `results/blastdbs`, `results/manifests`) are deleted
+  automatically at the end of each run to save space—rerunning the pipeline regenerates them.
 - Slurm stdout/stderr for each BLAST task lands in
   `results/blast/<gene>/slurm-<job>_<task>.out`.
 - Slurm stdout/stderr for each FASTQ conversion task lands in
-  `results/fastas/slurm_fastq/slurm-<job>_<task>.out`.
-- Manifests in `results/manifests/` track FASTQ inputs and FASTA outputs used by the arrays.
+  `results/fastas/slurm_fastq/slurm-<job>_<task>.out`
+- `results/nt/`: results of BLASTN against GenBank nt
 
 ### Slurm scheduling details
 
@@ -92,6 +99,8 @@ Key outputs (relative to each dataset directory):
   simultaneously. Set to `0` or a negative value to allow unlimited concurrency.
 - `BLAST_THREADS` (or `THREADS`) controls the per-task `blastn -num_threads`.
   Ensure `GENOME_BATCH_SIZE * BLAST_THREADS` fits within your allocation.
+- `MAX_RETRIES` (deafult `2`) sets a number of attempts for failed runs
+- `RETRY_DELAY` (deafult `300`s) allocates atime lag between running the next attempt  
 - Optional environment variables forwarded to `sbatch`:
   `SLURM_PARTITION`, `SLURM_TIME`, `SLURM_MEM_PER_CPU`,
   `SLURM_CPUS_PER_TASK`, `SLURM_QOS`, plus any extra flags via
@@ -110,7 +119,6 @@ export NCBI_EMAIL="you@example.com"
 # optional
 export NCBI_API_KEY="XXXX"
 
-# Run this per insect sample after selecting the desired FASTA in the folder of the analysis.
 # The script allows for subsampling the specimens in the analysis folder based on the naming pattern
 # bash NCBI_search_run.sh PATTERN-FOR-SOME-PARTS GENE ANALYSIS_FOLDER
 # example:

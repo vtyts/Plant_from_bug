@@ -1,7 +1,23 @@
 #!/usr/bin/env bash
 # Main pipeline to extract plant barcode sequences from insect Illumina data.
 set -euo pipefail
-module load ncbi-blast/2.16.0+
+
+LOG="run_pipeline_$(date +%Y%m%d_%H%M).log"
+START_TIME=$(date +%s)
+
+exec > >(awk -v start="$START_TIME" '
+{
+    now = systime()
+    elapsed = now - start
+    timestamp = strftime("%Y-%m-%d %H:%M:%S", now)
+    printf "[%s] [+%ds] %s\n", timestamp, elapsed, $0
+    fflush()
+}
+' | tee -a "$LOG") 2>&1
+
+trap 'echo "[FATAL] Error on line $LINENO]"; exit 1' ERR
+
+module load ncbi-blast/2.17.0+
 
 PLANT_BARCODE_DIR=${1:-"plant_barcodes"}
 DATASET_ARG=${2:-"plant_genes_Nov25"}
@@ -167,8 +183,7 @@ wait_for_job() {
         ""|PENDING|RUNNING|COMPLETED|COMPLETING|COMPLETED*)
             ;;
         CANCELLED*|FAILED|TIMEOUT|NODE_FAIL|PREEMPTED)
-            echo "Slurm job ${job_id} finished with state ${state}"
-            exit 1
+            echo "[warn] Slurm job ${job_id} finished with state ${state}"
             ;;
         *)
             ;;
@@ -221,17 +236,22 @@ wait_for_blast_files() {
     local blast_dir="$BLAST_DIR/$gene"
 
     echo "==> Waiting for ${expected} BLAST TSV files for ${gene}"
+    
+    shopt -s nullglob
 
     while true; do
-        local count
-        count=$(ls "$blast_dir"/*.tsv 2>/dev/null | wc -l)
-        (( count == expected )) && break
+        local files=("$blast_dir"/*.tsv)
+        local count=${#files[@]}
+        (( count >= expected )) && break
         sleep 30
     done
+
+    shopt -u nullglob
 }
 
 submit_blast_array() {
     local gene=$1
+    local skip_db=$2
     local query_abs
     query_abs=$(abs_path "$OUTPUT_DIR/${gene}_barcodes.fasta")
     local outdir_abs
@@ -259,7 +279,7 @@ submit_blast_array() {
     if [[ ${#SBATCH_EXTRA_ARGS[@]} -gt 0 ]]; then
         sbatch_cmd+=("${SBATCH_EXTRA_ARGS[@]}")
     fi
-    sbatch_cmd+=("$SCRIPT_DIR/slurm_blast_task.sh" "$MANIFEST_FILE" "$gene" "$query_abs" "$outdir_abs" "$blastdb_abs")
+    sbatch_cmd+=("$SCRIPT_DIR/slurm_blast_task.sh" "$MANIFEST_FILE" "$gene" "$query_abs" "$outdir_abs" "$blastdb_abs" "$skip_db")
 
     echo "==> Launching Slurm array for ${gene} (${total_tasks} samples; max ${concurrency_note} concurrent)"
     local job_id
@@ -267,7 +287,8 @@ submit_blast_array() {
         echo "Failed to submit Slurm job for ${gene}"
         exit 1
     }
-    echo "==> Slurm job ${job_id} submitted for ${gene}"
+    echo "==> Slurm job ${job_id} submitted for ${gene}"    
+    wait_for_job "$job_id"    
     wait_for_blast_files "$gene"
     echo "==> Slurm job ${job_id} completed for ${gene}"
 
@@ -298,11 +319,13 @@ derive_per_sample_unique_hits() {
             echo "[skip] ${gene} BLAST output for ${sample} has no hits; skipping."
             continue
         fi
+        set +e
         python3 "$SCRIPT_DIR/collect_unique_hits.py" \
             --blast-tsv "$tsv" \
             --unique-fasta "$sample_out_dir/${sample}_${gene}_unique_hits.fasta" \
             --unique-table "$sample_out_dir/${sample}_${gene}_unique_hits.tsv"
         ((processed++))
+        set -e
     done
     echo "==> Deduplicated per-sample ${gene} hits (${processed} samples) -> $sample_out_dir"
 }
@@ -312,6 +335,15 @@ sleep 30
 
 MANIFEST_FILE="$MANIFEST_DIR/insect_fastas.tsv"
 : >"$MANIFEST_FILE"
+
+sleep 5
+sync
+
+if [[ ! -s "$FASTQ_MANIFEST" ]]; then
+    echo "[FATAL] FASTQ_MANIFEST empty or missing: $FASTQ_MANIFEST"
+    exit 1
+fi
+
 while IFS=$'\t' read -r sample _ fasta_path; do
     [[ -z "${sample:-}" ]] && continue
     if [[ ! -f "$fasta_path" ]]; then
@@ -328,23 +360,44 @@ if (( TOTAL_SAMPLES == 0 )); then
 fi
 echo "==> Prepared manifest for $TOTAL_SAMPLES FASTA libraries"
 
-submit_blast_array "matK"
-submit_blast_array "rbcL"
+submit_blast_array "matK" 0
+submit_blast_array "rbcL" 1
+
+echo "==> Checking for failed BLAST searches"
+FAILED_FOUND=0
+
+sleep 10
+sync
+
+for gene in matK rbcL; do
+    cat $BLAST_DIR/$gene/FAILED_BLASTS_*.tab >> "$BLAST_DIR/$gene/FAILED_BLASTS.tab" 2>/dev/null || true
+    if [[ -s "$BLAST_DIR/$gene/FAILED_BLASTS.tab" ]]; then
+        echo "The following BLAST searches failed:"
+        cat "$BLAST_DIR/$gene/FAILED_BLASTS.tab"
+    fi
+    fail_file="$BLAST_DIR/$gene/FAILED_BLASTS.tab"
+    if [[ -s "$fail_file" ]]; then
+        if (( FAILED_FOUND == 0 )); then
+            echo "The following BLAST searches failed:"
+            FAILED_FOUND=1
+        fi
+        awk -v g="$gene" '{printf "  - Gene: %s | Sample: %s\n", $1, $2}' "$fail_file"
+    fi
+done
+
+if (( FAILED_FOUND == 0 )); then
+    echo "No BLAST failures detected!"
+fi
 
 echo "==> Deriving per-sample unique hits"
 derive_per_sample_unique_hits "matK"
 derive_per_sample_unique_hits "rbcL"
 
 echo "==> Cleaning up intermediate FASTA files and BLAST databases"
-rm -rf "$FASTAS_DIR" "$BLASTDB_DIR"
+rm -rf "$FASTAS_DIR" "$BLASTDB_DIR" "$MANIFEST_DIR"
+rm -f $OUTPUT_DIR/*.fasta
 
-cat <<EOF
-Pipeline complete.
-- Per-sample matK hits: $UNIQUE_DIR/by_sample/matK
-- Per-sample rbcL hits: $UNIQUE_DIR/by_sample/rbcL
-
-Check if any BLASTN jobs failed before proceeding
-To identify plant taxa via GenBank nt, run for each file:
-  export NCBI_EMAIL="you@example.com"
-  ./scripts/blast_nt_hits.sh results/unique/by_sample/matK/<sample>_matK_unique_hits.fasta results/nt/matK_vs_nt
-EOF
+echo "Pipeline complete!"
+echo "- Per-sample matK hits: $UNIQUE_DIR/by_sample/matK"
+echo "- Per-sample rbcL hits: $UNIQUE_DIR/by_sample/rbcL"
+echo "To identify plant taxa via GenBank nt, run NCBI_search_run.sh"
