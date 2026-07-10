@@ -22,6 +22,8 @@ module load ncbi-blast/2.17.0+
 PLANT_BARCODE_DIR=${1:-"plant_barcodes"}
 DATASET_ARG=${2:-"plant_genes_Nov25"}
 DATASET_ARG=${DATASET_ARG%/}
+MARKER1=${3:-"matK"}
+MARKER2=${4:-"rbcL"}
 
 THREADS=${THREADS:-32}
 EVALUE=${EVALUE:-1e-3}
@@ -78,11 +80,11 @@ else
     exit 1
 fi
 
-if [[ -n "${3:-}" ]]; then
-    if [[ "$3" = /* ]]; then
-        OUTPUT_DIR="$3"
+if [[ -n "${5:-}" ]]; then
+    if [[ "$5" = /* ]]; then
+        OUTPUT_DIR="$5"
     else
-        OUTPUT_DIR="$DATASET_ROOT/$3"
+        OUTPUT_DIR="$DATASET_ROOT/$5"
     fi
 else
     OUTPUT_DIR="$DATASET_ROOT/results"
@@ -109,6 +111,8 @@ fi
 
 echo "==> Dataset root: $DATASET_ROOT"
 echo "==> FASTQ source: $INSECT_FASTQ_DIR"
+echo "==> Marker 1: $MARKER1"
+echo "==> Marker 2: $MARKER2"
 
 FASTAS_DIR="$OUTPUT_DIR/fastas"
 BLASTDB_DIR="$OUTPUT_DIR/blastdbs"
@@ -116,7 +120,13 @@ BLAST_DIR="$OUTPUT_DIR/blast"
 UNIQUE_DIR="$OUTPUT_DIR/unique"
 MANIFEST_DIR="$OUTPUT_DIR/manifests"
 
-mkdir -p "$FASTAS_DIR" "$BLASTDB_DIR" "$BLAST_DIR/matK" "$BLAST_DIR/rbcL" "$UNIQUE_DIR" "$MANIFEST_DIR"
+mkdir -p \
+    "$FASTAS_DIR" \
+    "$BLASTDB_DIR" \
+    "$BLAST_DIR/$MARKER1" \
+    "$BLAST_DIR/$MARKER2" \
+    "$UNIQUE_DIR" \
+    "$MANIFEST_DIR"
 
 FASTQ_MANIFEST="$MANIFEST_DIR/fastq_inputs.tsv"
 : >"$FASTQ_MANIFEST"
@@ -157,8 +167,8 @@ combine_barcodes() {
     echo "==> Combined ${gene} barcodes -> $target"
 }
 
-combine_barcodes "matK" "matK_*.fasta"
-combine_barcodes "rbcL" "rbcL*.fasta"
+combine_barcodes "$MARKER1" "${MARKER1}*.fasta"
+combine_barcodes "$MARKER2" "${MARKER2}*.fasta"
 
 wait_for_job() {
     local job_id=$1
@@ -360,8 +370,8 @@ if (( TOTAL_SAMPLES == 0 )); then
 fi
 echo "==> Prepared manifest for $TOTAL_SAMPLES FASTA libraries"
 
-submit_blast_array "matK" 0
-submit_blast_array "rbcL" 1
+submit_blast_array "$MARKER1" 0
+submit_blast_array "$MARKER2" 1
 
 echo "==> Checking for failed BLAST searches"
 FAILED_FOUND=0
@@ -369,7 +379,7 @@ FAILED_FOUND=0
 sleep 10
 sync
 
-for gene in matK rbcL; do
+for gene in "$MARKER1" "$MARKER2"; do
     cat $BLAST_DIR/$gene/FAILED_BLASTS_*.tab >> "$BLAST_DIR/$gene/FAILED_BLASTS.tab" 2>/dev/null || true
     if [[ -s "$BLAST_DIR/$gene/FAILED_BLASTS.tab" ]]; then
         echo "The following BLAST searches failed:"
@@ -390,14 +400,14 @@ if (( FAILED_FOUND == 0 )); then
 fi
 
 echo "==> Deriving per-sample unique hits"
-derive_per_sample_unique_hits "matK"
-derive_per_sample_unique_hits "rbcL"
+derive_per_sample_unique_hits "$MARKER1"
+derive_per_sample_unique_hits "$MARKER2"
 
 echo "==> Cleaning up intermediate FASTA files and BLAST databases"
 rm -rf "$FASTAS_DIR" "$BLASTDB_DIR" "$MANIFEST_DIR"
 rm -f $OUTPUT_DIR/*.fasta
 
 echo "Pipeline complete!"
-echo "- Per-sample matK hits: $UNIQUE_DIR/by_sample/matK"
-echo "- Per-sample rbcL hits: $UNIQUE_DIR/by_sample/rbcL"
+echo "- Per-sample ${MARKER1} hits: $UNIQUE_DIR/by_sample/$MARKER1"
+echo "- Per-sample ${MARKER2} hits: $UNIQUE_DIR/by_sample/$MARKER2"
 echo "To identify plant taxa via GenBank nt, run NCBI_search_run.sh"
