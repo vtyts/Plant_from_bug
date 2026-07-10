@@ -1,17 +1,19 @@
 # Plant_from_bug
 
-Pipeline for extracting plant barcodes (matK and rbcL) from insect Illumina
+Pipeline for extracting plant barcodes (for 2 at a time) from insect Illumina
 metagenomes, collapsing unique hits, and identifying candidate host plants via
-GenBank nt.
+GenBank nt. Though initially intended for plant barcodes and insect genomes, 
+the pipeline works for barcodes and genomes from any group of organisms (see 
+Customization Tips section).
 
 ## Repository Layout
 
 - `plant_barcodes/`: provide reference barcode FASTA files.
-  - matK files must match `matK_*.fasta`
-  - rbcL files must match `rbcL*.fasta`
+  - files must match `MARKER1*.fasta` and `MARKER2*.fasta`
+  - e.g., for matK and rbcL files must match `matK*.fasta` and `rbcL*.fasta`
 - `plant_genes_Nov25/data/`: place insect metagenomes (`*_R1_R2.fastq.gz`)
-- `run_pipeline.sh`: orchestrates the workflow genome to hits
-- `NCBI_search_run.sh`: allows for in batch remote BLASTN submittions against GenBank nt
+- `run_pipeline.sh`: orchestrates the workflow from genomes to hits
+- `NCBI_search_run.sh`: allows for batch remote BLASTN submissions against the GenBank nt
    database for hit identification
 - `scripts/prepare_fastas.py`: converts compressed FASTQ libraries to FASTA
 - `scripts/collect_unique_hits.py`: filters BLAST output to per-subject unique hits
@@ -39,14 +41,21 @@ export FASTQ_BATCH_SIZE=10          # max concurrent FASTQ->FASTA jobs
 export GENOME_BATCH_SIZE=10        # max concurrent insect genomes
 export BLAST_THREADS=3             # threads per BLAST task
 export SLURM_MEM_PER_CPU=10G              # whatever per-core memory you need
-# (you can mix in other options, e.g. SLURM_PARTITION, SLURM_TIME, etc.)
+# (you can mix in other options, e.g., SLURM_PARTITION, SLURM_TIME, etc.)
 # export SLURM_PARTITION=general   # uncomment to target a partition
 
-# Analyses stay inside each dataset directory (e.g. plant_genes_Nov25/results)
+# Analyses stay inside each dataset directory (e.g., plant_genes_Nov25/results)
+bash run_pipeline.sh plant_barcodes plant_genes_Nov25 matK rbcL
+# or (matK and rbcL are the default)
 bash run_pipeline.sh plant_barcodes plant_genes_Nov25
 
-# For a different batch (e.g. December genomes)
+# For a different batch (e.g., December 2025 genomes)
+bash run_pipeline.sh plant_barcodes plant_genes_Dec25 matK rbcL
+# or (matK and rbcL are the default)
 bash run_pipeline.sh plant_barcodes plant_genes_Dec25
+
+# For a different set of barcodes (e.g., ITS and psbA-trnH)
+bash run_pipeline.sh plant_barcodes plant_genes_Dec25 ITS psbA-trnH
 ```
 
 Notes:
@@ -60,16 +69,16 @@ Notes:
   are honored as-is.
 - `run_pipeline.sh` submits Slurm job arrays for both the FASTQ conversion and BLAST stages; run it from a
   login/submit node with access to your shared filesystem.
-- `NCBI_search_run.sh` submits remote BLASTN seraches against GenBank nt database for hit identification. Results land in `<dataset>/results/nt`
-- BLASTN jobs can fail due to BLAST engine error: Database memory map file error or due to connection
-  issues with GenBank. Failed runs are automatically rerun 2 times by deafault with a lag of 5 minutes
-  before the next attempt. The lag time and number of attemps can be adjusted. 
+- `NCBI_search_run.sh` submits remote BLASTN searches against the GenBank nt database for hit identification. Results land in `<dataset>/results/nt`
+- BLASTN jobs can fail due to BLAST engine error: Database memory map file error, or due to connection
+  issues with GenBank. Failed runs are automatically rerun 2 times by default, with a lag of 5 minutes
+  before the next attempt. The lag time and number of attempts can be adjusted. 
 
 What happens:
 
 1. `*_R1_R2.fastq.gz` libraries are streamed into `results/fastas/*.fasta`
    through a Slurm array (10 concurrent conversions by default)
-2. All matK and rbcL barcode references are concatenated per gene
+2. All MARKER1 and MARKER2 barcode references are concatenated per gene (default matK and rbcL if no barcode names provided)
 3. Each FASTA becomes its own `makeblastdb` target
 4. Slurm job arrays process the FASTA manifest ~10 samples at a time (tunable)
    and run `blastn` (default e-value `1e-3`) for matK/rbcL queries
@@ -81,7 +90,7 @@ Key outputs (relative to each dataset directory):
   and stored in the main repository folder
 - `results/blast/`: raw BLAST tables per sample (one file per insect genome)
 - `results/unique/by_sample/<gene>/*_{gene}_unique_hits.(fasta|tsv)`: per-insect unique hits with duplicates (same `sseqid`) removed by keeping the longest alignment,
-  preserving which genome each matK/rbcL hit originated from. These are the primary
+  preserving which genome each barcode hit originated from. These are the primary
   inputs for downstream analyses (no repository-level combined unique files are produced).
 - Intermediates (`results/fastas`, `results/blastdbs`, `results/manifests`) are deleted
   automatically at the end of each run to save space—rerunning the pipeline regenerates them.
@@ -100,7 +109,7 @@ Key outputs (relative to each dataset directory):
 - `BLAST_THREADS` (or `THREADS`) controls the per-task `blastn -num_threads`.
   Ensure `GENOME_BATCH_SIZE * BLAST_THREADS` fits within your allocation.
 - `MAX_RETRIES` (deafult `2`) sets a number of attempts for failed runs
-- `RETRY_DELAY` (deafult `300`s) allocates atime lag between running the next attempt  
+- `RETRY_DELAY` (deafult `300`s) allocates a time lag between running the next attempt  
 - Optional environment variables forwarded to `sbatch`:
   `SLURM_PARTITION`, `SLURM_TIME`, `SLURM_MEM_PER_CPU`,
   `SLURM_CPUS_PER_TASK`, `SLURM_QOS`, plus any extra flags via
@@ -139,3 +148,6 @@ the per-sample FASTA outputs if you want to BLAST every insect genome.
   `scripts/blast_nt_hits.sh`.
 - `GENOME_BATCH_SIZE`, `BLAST_THREADS`, and the `SLURM_*` environment variables
   let you shape how aggressively the BLAST stage submits work to your cluster.
+- Though initially intended for plant barcodes and insect genomes, the pipeline works for barcodes
+  and genomes from any group of organisms. The only adjustment needed is while using NCBI_search_run.sh,
+  make sure to change Viridiplantae[ORGN] to a database that matches your barcode organisms.
