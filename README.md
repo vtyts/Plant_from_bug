@@ -127,6 +127,8 @@ Remote BLAST requires an email (and benefits from an NCBI API key).
 export NCBI_EMAIL="you@example.com"
 # optional
 export NCBI_API_KEY="XXXX"
+# optional for search in other taxa (default Viridiplantae)
+export TAX_FILTER="TAXON_OF_CHOICE[ORGN]"
 
 # The script allows for subsampling the specimens in the analysis folder based on the naming pattern
 # bash NCBI_search_run.sh PATTERN-FOR-SOME-PARTS GENE ANALYSIS_FOLDER
